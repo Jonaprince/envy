@@ -3,10 +3,10 @@ package cloudhypervisor
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
-
-	"github.com/jonaprince/envy/virtualmachine"
 )
 
 type Client struct {
@@ -27,20 +27,12 @@ func NewClient(socketPath string) *Client {
 	}
 }
 
-func (c *Client) CreateVM(virtualmachine *virtualmachine.Virtualmachine) error {
+func (c *Client) CreateVM(vmConfig VMConfig) error {
 	// Construct the VM configuration
-	vmConfig := VMConfig{
-		Cpus: &CpusConfig{
-			BootVcpus: virtualmachine.CPU,
-			MaxVcpus:  virtualmachine.CPU,
-		},
-		Disks: []DiskConfig{
-			{Path: "/var/lib/envy/vms/" + virtualmachine.ID + "/disk.img"},
-		},
-	}
+
 	buf := new(bytes.Buffer)
 	json.NewEncoder(buf).Encode(vmConfig)
-	req, err := http.NewRequest("POST", "http://unix/vm.create", buf)
+	req, err := http.NewRequest("PUT", "http://unix/api/v1/vm.create", buf)
 	req.Header.Set("Content-Type", "application/json")
 	if err != nil {
 		return err
@@ -51,6 +43,17 @@ func (c *Client) CreateVM(virtualmachine *virtualmachine.Virtualmachine) error {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		// Log the response body for debugging
+		var respBody bytes.Buffer
+		_, err := respBody.ReadFrom(resp.Body)
+		if err != nil {
+			slog.Error("failed to read response body", slog.Any("error", err))
+		} else {
+			slog.Error("failed to create VM", "response", respBody.String())
+		}
+		return fmt.Errorf("failed to create VM, status code: %d", resp.StatusCode)
+	}
 	return nil
 }
 

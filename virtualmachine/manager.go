@@ -12,6 +12,7 @@ type VMManager struct {
 }
 
 func (vmm *VMManager) DestroyVirtualMachine(vm *Virtualmachine) error {
+	vm.Destroy()
 	tx := vmm.db.Begin()
 	tx.Delete(vm)
 	_, err := gorm.G[Virtualmachine](tx).Where("ID = ?", vm.ID).Delete(context.Background())

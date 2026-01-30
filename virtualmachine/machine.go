@@ -32,7 +32,7 @@ type Virtualmachine struct {
 	Memory        int
 	MachineSocket string
 	Status        Status
-	Client        cloudhypervisor.Client
+	Client        *cloudhypervisor.Client
 	PID           int
 	Disk          string
 }
@@ -47,19 +47,19 @@ var statusNames = map[Status]string{
 	StatusError:         "Error",
 }
 
-func NewVirtualmachine(name string, cpu, memory int) *Virtualmachine {
+func NewVirtualmachine(name string, cpu, memory int, disk string) *Virtualmachine {
+	id := uuid.New().String()
+	chSocket := fmt.Sprintf("/var/run/envy/%s.sock", id)
 	vm := &Virtualmachine{
-		ID:     uuid.New().String(),
-		Name:   name,
-		CPU:    cpu,
-		Memory: memory,
-		Status: StatusStopped,
+		ID:            id,
+		Name:          name,
+		CPU:           cpu,
+		Memory:        memory,
+		Status:        StatusStopped,
+		Disk:          disk,
+		MachineSocket: chSocket,
+		Client:        cloudhypervisor.NewClient(chSocket),
 	}
-	// pid, err := createCloudHypervisorVM("/var/run/envy/")
-	// vm.PID = pid
-	// if err != nil {
-	// 	return nil, err
-	// }
 	return vm
 }
 
@@ -70,7 +70,8 @@ func (vm *Virtualmachine) FlashDisk(image string) error {
 		return err
 	}
 	defer src.Close()
-	dst, err := os.OpenFile(vm.Disk, os.O_WRONLY, 0644)
+	// Open the destination disk file and create it if it does not exist
+	dst, err := os.OpenFile(vm.Disk, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
@@ -99,6 +100,7 @@ func (vm *Virtualmachine) Init() (int, error) {
 	maxRetry := 10
 	for i := 0; i < maxRetry; i++ {
 		if _, err := os.Stat(vm.MachineSocket); err == nil {
+			vm.PID = cmd.Process.Pid
 			return cmd.Process.Pid, nil
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -117,8 +119,8 @@ func (vm *Virtualmachine) Create() error {
 			{Path: vm.Disk},
 		},
 	}
-	vm.Client.CreateVM(vmConfig)
-	return nil
+	err := vm.Client.CreateVM(vmConfig)
+	return err
 }
 
 // Start the virtual machine
@@ -133,6 +135,16 @@ func (vm *Virtualmachine) Stop() error {
 
 // Destroy the virtual machine
 func (vm *Virtualmachine) Destroy() error {
+	process, err := os.FindProcess(vm.PID)
+	if err != nil {
+		return err
+	}
+	err = process.Kill()
+	if err != nil {
+		return err
+	}
+	// Clean up the socket file
+	os.Remove(vm.MachineSocket)
 	return nil
 }
 
