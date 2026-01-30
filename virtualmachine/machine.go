@@ -2,13 +2,13 @@ package virtualmachine
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"syscall"
 	"time"
 
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 )
 
 type Status int
@@ -46,7 +46,7 @@ var statusNames = map[Status]string{
 	StatusError:         "Error",
 }
 
-func NewVirtualmachine(name string, cpu, memory int, db *gorm.DB) (*Virtualmachine, error) {
+func NewVirtualmachine(name string, cpu, memory int) *Virtualmachine {
 	vm := &Virtualmachine{
 		ID:     uuid.New().String(),
 		Name:   name,
@@ -59,8 +59,24 @@ func NewVirtualmachine(name string, cpu, memory int, db *gorm.DB) (*Virtualmachi
 	// if err != nil {
 	// 	return nil, err
 	// }
-	err := saveVirtualmachine(vm, db)
-	return vm, err
+	return vm
+}
+
+func (vm *Virtualmachine) FlashDisk(image string) error {
+	// Copy the base image to a new disk file
+	src, err := os.Open(image)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+	dst, err := os.OpenFile(vm.Disk, os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
+	buf := make([]byte, 4*1024*1024) // 4MB buffer for good performances
+	_, err = io.CopyBuffer(dst, src, buf)
+	return err
 }
 
 // Create the cloud hypervisor thread and return the PID of the detached process

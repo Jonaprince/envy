@@ -10,8 +10,8 @@ type VMManager struct {
 	db *gorm.DB
 }
 
-func DestroyVirtualMachine(vm *Virtualmachine, db *gorm.DB) error {
-	tx := db.Begin()
+func (vmm *VMManager) DestroyVirtualMachine(vm *Virtualmachine) error {
+	tx := vmm.db.Begin()
 	tx.Delete(vm)
 	_, err := gorm.G[Virtualmachine](tx).Where("ID = ?", vm.ID).Delete(context.Background())
 	if err != nil {
@@ -22,28 +22,16 @@ func DestroyVirtualMachine(vm *Virtualmachine, db *gorm.DB) error {
 	return nil
 }
 
-func CreateDisk(image string, vm *Virtualmachine) string {
-	// Copy the base image to a new disk file
-	diskPath := "/var/lib/envy/vms/" + vm.ID + "/disk.img"
-	// os.MkdirAll("/var/lib/envy/vms/"+vm.ID, 0755)
-	// cmd := exec.Command("cp", image, diskPath)
-	// err := cmd.Run()
-	// if err != nil {
-	// 	return "", err
-	// }
-	return diskPath
-}
-
-func saveVirtualmachine(vm *Virtualmachine, db *gorm.DB) error {
+func (vmm *VMManager) SaveVirtualmachine(vm *Virtualmachine) error {
 	ctx := context.Background()
-	err := gorm.G[Virtualmachine](db).Create(ctx, vm)
+	err := gorm.G[Virtualmachine](vmm.db).Create(ctx, vm)
 	return err
 }
 
-func RetrieveVirtualmachineByName(name string, db *gorm.DB) (*Virtualmachine, error) {
+func (vmm *VMManager) RetrieveVirtualmachineByName(name string) (*Virtualmachine, error) {
 	var vm Virtualmachine
 	ctx := context.Background()
-	vm, err := gorm.G[Virtualmachine](db).Where("name = ?", name).First(ctx)
+	vm, err := gorm.G[Virtualmachine](vmm.db).Where("name = ?", name).First(ctx)
 	if err != nil {
 		return nil, err
 	}
