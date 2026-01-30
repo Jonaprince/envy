@@ -81,3 +81,21 @@ func TestRetrieveVirtualmachineByName(t *testing.T) {
 		t.Errorf("Expected Status %d, got %d", vmCreated.Status, vmRetrieved.Status)
 	}
 }
+
+func TestDestroyVirtualMachine(t *testing.T) {
+	db := createTestDB(t)
+	vm, err := createSampleVirtualMachine(db)
+	if err != nil {
+		t.Fatalf("Failed to create virtual machine: %v", err)
+	}
+
+	err = virtualmachine.DestroyVirtualMachine(vm, db)
+	if err != nil {
+		t.Fatalf("Failed to destroy virtual machine: %v", err)
+	}
+
+	_, err = virtualmachine.RetrieveVirtualmachineByName("TestVM", db)
+	if err == nil {
+		t.Errorf("Expected error when retrieving destroyed virtual machine, got none")
+	}
+}
