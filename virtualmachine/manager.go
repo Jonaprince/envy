@@ -7,7 +7,8 @@ import (
 )
 
 type VMManager struct {
-	db *gorm.DB
+	db  *gorm.DB
+	vms map[string]*Virtualmachine
 }
 
 func (vmm *VMManager) DestroyVirtualMachine(vm *Virtualmachine) error {

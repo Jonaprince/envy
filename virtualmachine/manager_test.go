@@ -1,4 +1,4 @@
-// package virtualmachine_test
+package virtualmachine_test
 
 // import (
 // 	"testing"
