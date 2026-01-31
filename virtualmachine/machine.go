@@ -107,6 +107,7 @@ func (vm *Virtualmachine) Init() (int, error) {
 	for i := 0; i < maxRetry; i++ {
 		if _, err := os.Stat(vm.MachineSocket); err == nil {
 			vm.PID = cmd.Process.Pid
+			vm.Status = StatusInitialized
 			return cmd.Process.Pid, nil
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -141,11 +142,27 @@ func (vm *Virtualmachine) Create() error {
 
 // Start the virtual machine
 func (vm *Virtualmachine) Start() error {
+	if vm.Status != StatusInitialized {
+		return fmt.Errorf("VM is not initialized")
+	}
+	err := vm.Client.BootVM()
+	if err != nil {
+		return err
+	}
+	vm.Status = StatusRunning
 	return nil
 }
 
 // Stop the virtual machine
-func (vm *Virtualmachine) Stop() error {
+func (vm *Virtualmachine) Shutdown() error {
+	if vm.Status != StatusRunning {
+		return fmt.Errorf("VM is not running")
+	}
+	err := vm.Client.ShutdownVM()
+	if err != nil {
+		return err
+	}
+	vm.Status = StatusStopped
 	return nil
 }
 
