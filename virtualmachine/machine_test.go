@@ -21,10 +21,10 @@ func TestFlashDisk(t *testing.T) {
 }
 
 func TestVirtualCreation(t *testing.T) {
-	machine := virtualmachine.NewVirtualmachine("toto", 1, 512, "/tmp/testdisk.img")
+	machine := virtualmachine.NewVirtualmachine("toto", 1, 2048, "/tmp/testdisk.img", "/tmp/hypervisor-fw")
 	// Flash a disk image only if testdisk does not exist
 	if _, err := os.Stat(machine.Disk); os.IsNotExist(err) {
-		err := machine.FlashDisk("jammy-server-cloudimg-amd64.raw")
+		err := machine.FlashDisk("../jammy-server-cloudimg-amd64.raw")
 		if err != nil {
 			t.Fatalf("Failed to flash disk: %v", err)
 		}

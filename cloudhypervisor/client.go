@@ -29,7 +29,7 @@ func NewClient(socketPath string) *Client {
 
 func (c *Client) CreateVM(vmConfig VMConfig) error {
 	// Construct the VM configuration
-
+	slog.Info("Creating VM with config", slog.Any("config", vmConfig))
 	buf := new(bytes.Buffer)
 	json.NewEncoder(buf).Encode(vmConfig)
 	req, err := http.NewRequest("PUT", "http://unix/api/v1/vm.create", buf)
@@ -57,6 +57,10 @@ func (c *Client) CreateVM(vmConfig VMConfig) error {
 	return nil
 }
 
+type MemoryConfig struct {
+	Size int64 `json:"size"`
+}
+
 type CpusConfig struct {
 	BootVcpus int `json:"boot_vcpus"`
 	MaxVcpus  int `json:"max_vcpus"`
@@ -66,15 +70,19 @@ type DiskConfig struct {
 	Path string `json:"path"`
 }
 
-// type PayloadConfig struct {
-// 	Cmdline   *string `json:"cmdline,omitempty"`
-// 	Firmware  *string `json:"firmware,omitempty"`
-// 	Initramfs *string `json:"initramfs,omitempty"`
-// 	Kernel    *string `json:"kernel,omitempty"`
-// }
+type PayloadConfig struct {
+	Firmware string `json:"firmware,omitempty"`
+}
+
+type ConsoleConfig struct {
+	Mode   string `json:"mode"`
+	Socket string `json:"socket"`
+}
 
 type VMConfig struct {
-	Cpus *CpusConfig `json:"cpus,omitempty"`
-	// Payload *PayloadConfig `json:"payload,omitempty"`
-	Disks []DiskConfig `json:"disks,omitempty"`
+	Cpus         CpusConfig    `json:"cpus,omitempty"`
+	Disks        []DiskConfig  `json:"disks,omitempty"`
+	Payload      PayloadConfig `json:"payload,omitempty"`
+	Serial       ConsoleConfig `json:"serial,omitempty"`
+	MemoryConfig MemoryConfig  `json:"memory,omitempty"`
 }

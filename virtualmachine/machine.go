@@ -31,10 +31,12 @@ type Virtualmachine struct {
 	CPU           int
 	Memory        int
 	MachineSocket string
+	SerialSocket  string
 	Status        Status
 	Client        *cloudhypervisor.Client
 	PID           int
 	Disk          string
+	Firmware      string
 }
 
 var statusNames = map[Status]string{
@@ -47,9 +49,11 @@ var statusNames = map[Status]string{
 	StatusError:         "Error",
 }
 
-func NewVirtualmachine(name string, cpu, memory int, disk string) *Virtualmachine {
+func NewVirtualmachine(name string, cpu, memory int, disk, firmware string) *Virtualmachine {
 	id := uuid.New().String()
-	chSocket := fmt.Sprintf("/var/run/envy/%s.sock", id)
+	os.MkdirAll("/var/run/envy", 0755)
+	chSocket := fmt.Sprintf("/var/run/envy/ch-%s.sock", id)
+	serialSocket := fmt.Sprintf("/var/run/envy/ch-%s.console", id)
 	vm := &Virtualmachine{
 		ID:            id,
 		Name:          name,
@@ -58,7 +62,9 @@ func NewVirtualmachine(name string, cpu, memory int, disk string) *Virtualmachin
 		Status:        StatusStopped,
 		Disk:          disk,
 		MachineSocket: chSocket,
+		SerialSocket:  serialSocket,
 		Client:        cloudhypervisor.NewClient(chSocket),
+		Firmware:      firmware,
 	}
 	return vm
 }
@@ -111,12 +117,22 @@ func (vm *Virtualmachine) Init() (int, error) {
 // Create a new virtual machine using the cloud hypervisor API
 func (vm *Virtualmachine) Create() error {
 	vmConfig := cloudhypervisor.VMConfig{
-		Cpus: &cloudhypervisor.CpusConfig{
+		Cpus: cloudhypervisor.CpusConfig{
 			BootVcpus: vm.CPU,
 			MaxVcpus:  vm.CPU,
 		},
 		Disks: []cloudhypervisor.DiskConfig{
 			{Path: vm.Disk},
+		},
+		Payload: cloudhypervisor.PayloadConfig{
+			Firmware: vm.Firmware,
+		},
+		Serial: cloudhypervisor.ConsoleConfig{
+			Mode:   "Socket",
+			Socket: vm.SerialSocket,
+		},
+		MemoryConfig: cloudhypervisor.MemoryConfig{
+			Size: int64(vm.Memory * 1024 * 1024),
 		},
 	}
 	err := vm.Client.CreateVM(vmConfig)
@@ -143,6 +159,9 @@ func (vm *Virtualmachine) Destroy() error {
 	if err != nil {
 		return err
 	}
+	// Remove the disk file
+	// os.Remove(vm.Disk)
+
 	// Clean up the socket file
 	os.Remove(vm.MachineSocket)
 	return nil
