@@ -160,7 +160,7 @@ func (vm *Virtualmachine) Create() error {
 // irtual machine
 // TODO: Check the VM status after starting
 func (vm *Virtualmachine) Start() error {
-	if vm.State != Initialized {
+	if vm.State != Created {
 		return fmt.Errorf("VM is not initialized")
 	}
 	err := vm.Client.BootVM()

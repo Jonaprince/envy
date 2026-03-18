@@ -3,6 +3,7 @@ package manager
 import (
 	"context"
 	"errors"
+	"time"
 
 	virtualmachine "github.com/jonaprince/envy/virtualmachine"
 	"gorm.io/gorm"
@@ -11,6 +12,19 @@ import (
 type VMManager struct {
 	db  *gorm.DB
 	vms map[string]*virtualmachine.Virtualmachine
+}
+
+func (vmm *VMManager) Run(ctx context.Context) {
+	ticker := time.NewTicker(1 * time.Second)
+	for {
+		select {
+		case <-ticker.C:
+			vmm.ReconcileVirtualMachines()
+		case <-ctx.Done():
+			ticker.Stop()
+			return
+		}
+	}
 }
 
 func (vmm *VMManager) DeleteVirtualMachine(vm *virtualmachine.Virtualmachine) error {
@@ -35,7 +49,7 @@ func (vmm *VMManager) SaveVirtualmachine(vm *virtualmachine.Virtualmachine) erro
 	return err
 }
 
-func (vmm *VMManager) ReconcileVirtualMachine(vm *virtualmachine.Virtualmachine) error {
+func (vmm *VMManager) ReconcileVirtualMachines() error {
 	for _, machine := range vmm.vms {
 		machine.Reconcile()
 		if machine.State == virtualmachine.Destroyed {
