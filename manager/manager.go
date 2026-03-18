@@ -1,21 +1,26 @@
-package virtualmachine
+package manager
 
 import (
 	"context"
+	"errors"
 
+	virtualmachine "github.com/jonaprince/envy/virtualmachine"
 	"gorm.io/gorm"
 )
 
 type VMManager struct {
 	db  *gorm.DB
-	vms map[string]*Virtualmachine
+	vms map[string]*virtualmachine.Virtualmachine
 }
 
-func (vmm *VMManager) DestroyVirtualMachine(vm *Virtualmachine) error {
-	vm.Destroy()
+func (vmm *VMManager) DeleteVirtualMachine(vm *virtualmachine.Virtualmachine) error {
+	// Ensure the VM is destroyed before deleting from the database
+	if vm.State != virtualmachine.Destroyed {
+		return errors.New("You can't delete a virtual machine from the db which is not destroyed")
+	}
 	tx := vmm.db.Begin()
 	tx.Delete(vm)
-	_, err := gorm.G[Virtualmachine](tx).Where("ID = ?", vm.ID).Delete(context.Background())
+	_, err := gorm.G[virtualmachine.Virtualmachine](tx).Where("ID = ?", vm.ID).Delete(context.Background())
 	if err != nil {
 		tx.Rollback()
 		return err
@@ -24,18 +29,31 @@ func (vmm *VMManager) DestroyVirtualMachine(vm *Virtualmachine) error {
 	return nil
 }
 
-func (vmm *VMManager) SaveVirtualmachine(vm *Virtualmachine) error {
+func (vmm *VMManager) SaveVirtualmachine(vm *virtualmachine.Virtualmachine) error {
 	ctx := context.Background()
-	err := gorm.G[Virtualmachine](vmm.db).Create(ctx, vm)
+	err := gorm.G[virtualmachine.Virtualmachine](vmm.db).Create(ctx, vm)
 	return err
 }
 
-func (vmm *VMManager) RetrieveVirtualmachineByName(name string) (*Virtualmachine, error) {
-	var vm Virtualmachine
+func (vmm *VMManager) ReconcileVirtualMachine(vm *virtualmachine.Virtualmachine) error {
+	for _, machine := range vmm.vms {
+		machine.Reconcile()
+		if machine.State == virtualmachine.Destroyed {
+			vmm.DeleteVirtualMachine(machine)
+			delete(vmm.vms, machine.ID)
+		} else {
+			vmm.SaveVirtualmachine(machine)
+		}
+	}
+	return nil
+}
+
+func (vmm *VMManager) RetrieveAllVirtualmachines() ([]virtualmachine.Virtualmachine, error) {
+	var vms []virtualmachine.Virtualmachine
 	ctx := context.Background()
-	vm, err := gorm.G[Virtualmachine](vmm.db).Where("name = ?", name).First(ctx)
+	vms, err := gorm.G[virtualmachine.Virtualmachine](vmm.db).Find(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return &vm, nil
+	return vms, nil
 }

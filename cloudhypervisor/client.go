@@ -21,7 +21,6 @@ func NewClient(socketPath string) *Client {
 			},
 		},
 	}
-
 	return &Client{
 		httpClient: httpClient,
 	}
@@ -29,7 +28,7 @@ func NewClient(socketPath string) *Client {
 
 func (c *Client) CreateVM(vmConfig VMConfig) error {
 	// Construct the VM configuration
-	slog.Info("Creating VM with config", slog.Any("config", vmConfig))
+	slog.Debug("Creating VM with config", slog.Any("config", vmConfig))
 	buf := new(bytes.Buffer)
 	json.NewEncoder(buf).Encode(vmConfig)
 	req, err := http.NewRequest("PUT", "http://unix/api/v1/vm.create", buf)
@@ -55,6 +54,74 @@ func (c *Client) CreateVM(vmConfig VMConfig) error {
 		return fmt.Errorf("failed to create VM, status code: %d", resp.StatusCode)
 	}
 	return nil
+}
+
+func (c *Client) BootVM() error {
+	req, err := http.NewRequest("PUT", "http://unix/api/v1/vm.boot", nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("failed to boot VM, status code: %d", resp.StatusCode)
+	}
+	return nil
+}
+
+func (c *Client) ShutdownVM() error {
+	req, err := http.NewRequest("PUT", "http://unix/api/v1/vm.shutdown", nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("failed to shutdown VM, status code: %d", resp.StatusCode)
+	}
+	return nil
+}
+
+func (c *Client) GetVMInfo() (VMInfo, error) {
+	req, err := http.NewRequest("GET", "http://unix/api/v1/vm.info", nil)
+	if err != nil {
+		return VMInfo{}, err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return VMInfo{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return VMInfo{}, fmt.Errorf("failed to get VM info, status code: %d", resp.StatusCode)
+	}
+	var vmInfo VMInfo
+	if err := json.NewDecoder(resp.Body).Decode(&vmInfo); err != nil {
+		return VMInfo{}, err
+	}
+	return vmInfo, nil
+}
+
+type VmState string
+
+const (
+	Created   VmState = "created"
+	Running   VmState = "running"
+	Stopped   VmState = "stopped"
+	Destroyed VmState = "destroyed"
+)
+
+type VMInfo struct {
+	Config VMConfig `json:"config"`
+	State  VmState  `json:"state"`
 }
 
 type MemoryConfig struct {

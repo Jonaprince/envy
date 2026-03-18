@@ -1,4 +1,4 @@
-package virtualmachine_test
+package manager_test
 
 // import (
 // 	"testing"

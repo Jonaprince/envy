@@ -3,6 +3,7 @@ package virtualmachine
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"syscall"
@@ -15,13 +16,14 @@ import (
 type Status int
 
 const (
-	StatusStopped Status = iota
-	StatusUninitialized
-	StatusInitialized
-	StatusStarting
-	StatusRunning
-	StatusStopping
-	StatusError
+	Stopped Status = iota
+	Uninitialized
+	Created
+	Starting
+	Running
+	Stopping
+	Error
+	Destroyed
 )
 
 type Virtualmachine struct {
@@ -32,7 +34,8 @@ type Virtualmachine struct {
 	Memory        int
 	MachineSocket string
 	SerialSocket  string
-	Status        Status
+	State         Status
+	DesiredState  Status
 	Client        *cloudhypervisor.Client
 	PID           int
 	Disk          string
@@ -40,13 +43,25 @@ type Virtualmachine struct {
 }
 
 var statusNames = map[Status]string{
-	StatusStopped:       "Stopped",
-	StatusUninitialized: "Uninitialized",
-	StatusInitialized:   "Initialized",
-	StatusStarting:      "Starting",
-	StatusRunning:       "Running",
-	StatusStopping:      "Stopping",
-	StatusError:         "Error",
+	Stopped:       "stopped",
+	Uninitialized: "uninitialized",
+	Created:       "created",
+	Starting:      "starting",
+	Running:       "running",
+	Stopping:      "stopping",
+	Error:         "error",
+	Destroyed:     "destroyed",
+}
+
+var statusValues = map[string]Status{
+	"stopped":       Stopped,
+	"uninitialized": Uninitialized,
+	"created":       Created,
+	"starting":      Starting,
+	"running":       Running,
+	"stopping":      Stopping,
+	"error":         Error,
+	"destroyed":     Destroyed,
 }
 
 func NewVirtualmachine(name string, cpu, memory int, disk, firmware string) *Virtualmachine {
@@ -59,7 +74,8 @@ func NewVirtualmachine(name string, cpu, memory int, disk, firmware string) *Vir
 		Name:          name,
 		CPU:           cpu,
 		Memory:        memory,
-		Status:        StatusStopped,
+		State:         Stopped,
+		DesiredState:  Stopped,
 		Disk:          disk,
 		MachineSocket: chSocket,
 		SerialSocket:  serialSocket,
@@ -107,7 +123,7 @@ func (vm *Virtualmachine) Init() (int, error) {
 	for i := 0; i < maxRetry; i++ {
 		if _, err := os.Stat(vm.MachineSocket); err == nil {
 			vm.PID = cmd.Process.Pid
-			vm.Status = StatusInitialized
+			vm.State = Created
 			return cmd.Process.Pid, nil
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -140,29 +156,33 @@ func (vm *Virtualmachine) Create() error {
 	return err
 }
 
-// Start the virtual machine
+// Start the v
+// irtual machine
+// TODO: Check the VM status after starting
 func (vm *Virtualmachine) Start() error {
-	if vm.Status != StatusInitialized {
+	if vm.State != Initialized {
 		return fmt.Errorf("VM is not initialized")
 	}
 	err := vm.Client.BootVM()
 	if err != nil {
 		return err
 	}
-	vm.Status = StatusRunning
+	vm.State = Running
 	return nil
 }
 
 // Stop the virtual machine
+// TODO: Check the VM status after shutting down
+// TODO: Implement a soft and hard shutdown
 func (vm *Virtualmachine) Shutdown() error {
-	if vm.Status != StatusRunning {
+	if vm.State != Running {
 		return fmt.Errorf("VM is not running")
 	}
 	err := vm.Client.ShutdownVM()
 	if err != nil {
 		return err
 	}
-	vm.Status = StatusStopped
+	vm.State = Stopped
 	return nil
 }
 
@@ -177,19 +197,50 @@ func (vm *Virtualmachine) Destroy() error {
 		return err
 	}
 	// Remove the disk file
-	// os.Remove(vm.Disk)
+	err = os.Remove(vm.Disk)
+	if err != nil {
+		return err
+	}
 
 	// Clean up the socket file
-	os.Remove(vm.MachineSocket)
+	err = os.Remove(vm.MachineSocket)
+	if err != nil {
+		return err
+	}
+	// Mark the VM as destroyed
+	vm.State = Destroyed
 	return nil
 }
 
 // Contact the cloud hypervisor API to check the vm status
-func (vm *Virtualmachine) UpdateStatus(status Status) {
-	vm.Status = status
+func (vm *Virtualmachine) UpdateStatus() {
+	info, err := vm.Client.GetVMInfo()
+	if err != nil {
+		vm.State = Error
+		return
+	}
+	vm.State = statusValues[(string)(info.State)]
 }
 
 // Reconcile the VM state between desired and actual state
-func (vm *Virtualmachine) Reconcile() error {
-	return nil
+func (vm *Virtualmachine) Reconcile() {
+	vm.UpdateStatus()
+	if vm.State == vm.DesiredState {
+		return
+	}
+	if vm.State == Error {
+		// TODO; Handle error state, maybe try to restart the VM or mark it for deletion
+		// Maybe should add a function mitigiateError() to the VM struct to handle this case
+		slog.Error("VM is in error state", "vm", vm.Name)
+		return
+	}
+	slog.Info("VM state not matching desired state", "vm", vm.Name, "from", statusNames[vm.State], "to", statusNames[vm.DesiredState])
+	switch vm.DesiredState {
+	case Running:
+		vm.Start()
+	case Stopped:
+		vm.Shutdown()
+	case Destroyed:
+		vm.Destroy()
+	}
 }
